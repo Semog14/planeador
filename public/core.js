@@ -277,8 +277,8 @@ export function fmtQty(q, unit) {
   const r = q >= 10 ? Math.round(q) : Math.round(q * 10) / 10;
   return `${String(r).replace('.', ',')}${unit === 'g' || unit === 'kg' || unit === 'ml' || unit === 'l' ? ' ' : ' '}${UNIT_LABEL[unit] ?? unit}`.trim();
 }
-export function shoppingList(plan, recipes) {
-  const items = {}; const staples = {}; const notes = {};
+export function shoppingList(plan, recipes, have = {}) {
+  const items = {}; const hidden = []; const staples = {}; const notes = {};
   const bad = (n) => !n || n.length < 2 || /^[^a-zà-ú]/i.test(n);
   for (const b of batchesOf(plan, recipes)) {
     for (const ing of b.r.ing || []) {
@@ -292,11 +292,11 @@ export function shoppingList(plan, recipes) {
     }
   }
   const byCat = {};
-  for (const it of Object.values(items)) (byCat[it.cat] ||= []).push({ ...it, from: [...it.from], label: it.unit === 'dente' ? `${fmtQty(it.qty, '')} ${it.qty > 1.01 ? 'dentes' : 'dente'} de alho`.replace(/\s+/g, ' ') : `${fmtQty(it.qty, it.unit)} ${it.unit === '' ? pluralName(it.disp, it.qty) : it.disp}`.replace(/\s+/g, ' ').trim() });
+  for (const it of Object.values(items)) { if (have[it.name]) { hidden.push({ name: it.name, label: `${fmtQty(it.qty, it.unit)} ${it.disp}`.replace(/\s+/g, ' ').trim() }); continue; } (byCat[it.cat] ||= []).push({ ...it, from: [...it.from], label: it.unit === 'dente' ? `${fmtQty(it.qty, '')} ${it.qty > 1.01 ? 'dentes' : 'dente'} de alho`.replace(/\s+/g, ' ') : `${fmtQty(it.qty, it.unit)} ${it.unit === '' ? pluralName(it.disp, it.qty) : it.disp}`.replace(/\s+/g, ' ').trim() }); }
   const order = ['Frutas e legumes', 'Talho', 'Peixaria', 'Laticínios e ovos', 'Padaria', 'Mercearia', 'Congelados e conservas'];
   const cats = order.filter((c) => byCat[c]).map((c) => ({ cat: c, items: byCat[c].sort((a, b) => a.name.localeCompare(b.name, 'pt')) }));
   const toCheck = Object.entries(notes).filter(([k]) => !items[k + '|']).map(([k, v]) => k).sort((a, b) => a.localeCompare(b, 'pt'));
-  return { cats, staples: Object.keys(staples).sort((a, b) => a.localeCompare(b, 'pt')), toCheck };
+  return { hidden: hidden.sort((a, b) => a.name.localeCompare(b.name, 'pt')), cats, staples: Object.keys(staples).sort((a, b) => a.localeCompare(b, 'pt')), toCheck };
 }
 
 // ---------- avisos para a criança ----------
@@ -330,7 +330,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export const doseTxt = (d) => { d = Math.round(d * 4) / 4; const f = { 0.25: '¼', 0.5: '½', 0.75: '¾' }; const w = Math.floor(d + 1e-9); const fr = Math.round((d - w) * 100) / 100; if (f[fr] !== undefined && (fr > 0)) return (w ? w + ' ' : '') + f[fr]; return String(Math.round(d * 100) / 100).replace('.', ','); };
 export function weeklyEmailHTML(state, recipes, plan, appUrl = '') {
   const profs = state.profiles; const rs = recipes;
-  const batches = batchesOf(plan, rs); const shop = shoppingList(plan, rs); const alerts = childAlerts(plan, rs);
+  const batches = batchesOf(plan, rs); const shop = shoppingList(plan, rs, state.have?.[mondayOf(plan.days[0].date)] || {}); const alerts = childAlerts(plan, rs);
   let h = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:auto;color:#222">`;
   h += `<h1 style="color:#1f6f4a">Compras e plano da próxima semana</h1>`;
   h += `<p>Semana de ${fmtLong(plan.days[0].date)} a ${fmtLong(plan.days[plan.days.length - 1].date)}. Dia de prep: <b>${fmtLong(plan.prep)}</b>. ${appUrl ? `<a href="${appUrl}">Abrir a app</a>` : ''}</p>`;

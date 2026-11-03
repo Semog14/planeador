@@ -133,14 +133,16 @@ function viewCompras() {
   const week = ui.shopWeek; const plan = planOfWeek(week);
   let h = `<div class="wk"><button class="ghost" data-act="shopwk" data-d="-7" aria-label="Semana anterior">◀</button><h2>Compras · ${esc(C.fmtDate(week))}</h2><button class="ghost" data-act="shopwk" data-d="7" aria-label="Semana seguinte">▶</button></div>`;
   if (!plan) return h + emptyState('Ainda sem lista', 'A lista nasce do plano da semana.', `<button class="btn" data-act="gen" data-week="${week}">Gerar plano</button>`);
-  const sh = C.shoppingList(plan, RS);
+  const sh = C.shoppingList(plan, RS, s.have?.[week] || {});
   const allK = sh.cats.flatMap((c) => c.items.map((it) => `shop:${week}:${it.key}`)); const got = allK.filter((k) => s.checked?.[k]).length;
   h += `<div class="prog"><div class="bar"><i style="width:${allK.length ? Math.round((got / allK.length) * 100) : 0}%"></i></div><span>${got}/${allK.length}</span><button class="chipbtn" style="border:0" data-act="copyshop">Copiar</button></div>`;
   for (const c of sh.cats) {
     h += `<h3>${esc(c.cat)}</h3><div class="card" style="padding:4px 16px"><ul class="clean">`;
-    for (const it of c.items) { const k = `shop:${week}:${it.key}`; h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${esc(k)}" ${s.checked?.[k] ? 'checked' : ''}><span class="l">${esc(it.label)}<br><span class="mut small">${esc(it.from.slice(0, 3).join(', '))}${it.from.length > 3 ? '…' : ''}</span></span></li>`; }
+    for (const it of c.items) { const k = `shop:${week}:${it.key}`; h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${esc(k)}" ${s.checked?.[k] ? 'checked' : ''}><span class="l">${esc(it.label)}<br><span class="mut small">${esc(it.from.slice(0, 3).join(', '))}${it.from.length > 3 ? '…' : ''}</span></span><button class="chipbtn" style="border:0;flex:none" data-act="have" data-n="${esc(it.name)}" aria-label="Já tenho em casa">Já tenho</button></li>`; }
     h += `</ul></div>`;
   }
+  if (!sh.cats.length) h += emptyState('Lista vazia', 'Já tens tudo em casa. Boas compras (ou não).');
+  if (sh.hidden.length) h += `<h3>Já tenho em casa (${sh.hidden.length})</h3><div class="card" style="padding:4px 16px"><ul class="clean">${sh.hidden.map((i) => `<li><span class="l mut">${esc(i.label)}</span><button class="chipbtn" style="border:0;flex:none" data-act="unhave" data-n="${esc(i.name)}">Repor</button></li>`).join('')}</ul></div>`;
   if (sh.staples.length) h += `<h3>Básicos (confirma se tens em casa)</h3><div class="card small">${sh.staples.map(esc).join(', ')}</div>`;
   if (sh.toCheck.length) h += `<h3>Sem quantidade no livro</h3><div class="card small">${sh.toCheck.map(esc).join(', ')}</div>`;
   h += `<p class="mut small">As quantidades somam as receitas do plano (arredondadas para meias receitas). Confere sempre as embalagens.</p>`;
@@ -364,8 +366,9 @@ document.addEventListener('click', async (e) => {
       applyCountable(C.finalizePlan(plan, x, RS));
     }); closeModal(); return render();
   }
+  if (a === 'have' || a === 'unhave') { S.update((x) => { const w = ((x.have ||= {})[ui.shopWeek] ||= {}); if (a === 'have') w[d.n] = true; else delete w[d.n]; }); return render(); }
   if (a === 'copyshop') {
-    const sh = C.shoppingList(planOfWeek(ui.shopWeek), RS);
+    const sh = C.shoppingList(planOfWeek(ui.shopWeek), RS, s.have?.[ui.shopWeek] || {});
     const txt = sh.cats.map((c) => c.cat + '\n' + c.items.map((i) => '- ' + i.label).join('\n')).join('\n\n') + '\n\nBásicos: ' + sh.staples.join(', ');
     try { await navigator.clipboard.writeText(txt); toast('Lista copiada'); } catch { toast('Não foi possível copiar'); } return;
   }
