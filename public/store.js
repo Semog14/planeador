@@ -24,7 +24,7 @@ function authHeaders(k) { const h = { apikey: k, 'Content-Type': 'application/js
 async function rpc(fn, args) {
   const r = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/${fn}`, { method: 'POST', headers: authHeaders(CONFIG.supabaseKey), body: JSON.stringify(args) });
   if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 160); } catch {} throw new Error(`${fn} (${r.status}) ${t}`); }
-  return r.json();
+  const t = await r.text(); if (!t) return null; try { return JSON.parse(t); } catch { return null; }
 }
 function newFid() { const a = new Uint8Array(18); crypto.getRandomValues(a); return [...a].map((b) => b.toString(16).padStart(2, '0')).join(''); }
 
