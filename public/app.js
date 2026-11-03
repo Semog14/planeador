@@ -87,7 +87,7 @@ function viewHoje() {
     const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose);
     const done = !!s.done?.[date]?.[pid]?.[slot];
     h += `<div class="card slot"><div class="t">${SLOT_NAMES[slot]}</div><div class="b"><div class="n" data-act="recipe" data-id="${r.id}" style="cursor:pointer">${esc(r.title)}</div>
-    <div>${esc(doseLabel(r, dose))} · <b>${n.kcal} kcal</b></div><div class="macros"><span>P <b>${n.p}g</b></span><span>G <b>${n.f}g</b></span><span>H <b>${n.c}g</b></span></div>
+    <div>${esc(doseLabel(r, dose))} · <b>${n.kcal} kcal</b> <a href="#" data-act="meal" data-d="${date}" data-slot="${slot}" style="color:var(--pri);font-weight:600">ver quantidades</a></div><div class="macros"><span>P <b>${n.p}g</b></span><span>G <b>${n.f}g</b></span><span>H <b>${n.c}g</b></span></div>
     <div>${modeBadge(m, r)}${childBadge(r)}</div></div><input type="checkbox" data-act="done" data-slot="${slot}" ${done ? 'checked' : ''} aria-label="Marcar como comido"></div>`;
   }
   h += `<p class="mut small">Os valores vêm das macros do livro. Hidratos líquidos = hidratos totais menos fibra.</p>`;
@@ -114,7 +114,7 @@ function viewSemana() {
   for (const slot of SLOTS) {
     const m = day.meals[slot]; const r = rec(m.rid); if (!r) continue;
     const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose);
-    h += `<div class="card slot"><div class="t">${SLOT_NAMES[slot]}</div><div class="b"><div class="n" data-act="recipe" data-id="${r.id}" style="cursor:pointer">${esc(r.title)}</div><div>${esc(doseLabel(r, dose))} · <b>${n.kcal} kcal</b> · P ${n.p}g · G ${n.f}g · H ${n.c}g</div><div>${modeBadge(m, r)}${childBadge(r)}</div></div><button class="ghost" data-act="swap" data-d="${day.date}" data-slot="${slot}">Trocar</button></div>`;
+    h += `<div class="card slot"><div class="t">${SLOT_NAMES[slot]}</div><div class="b"><div class="n" data-act="recipe" data-id="${r.id}" style="cursor:pointer">${esc(r.title)}</div><div>${esc(doseLabel(r, dose))} · <b>${n.kcal} kcal</b> <a href="#" data-act="meal" data-d="${day.date}" data-slot="${slot}" style="color:var(--pri);font-weight:600">ver quantidades</a><br>P ${n.p}g · G ${n.f}g · H ${n.c}g</div><div>${modeBadge(m, r)}${childBadge(r)}</div></div><button class="ghost" data-act="swap" data-d="${day.date}" data-slot="${slot}">Trocar</button></div>`;
   }
   // prep
   const batches = C.batchesOf(plan, RS);
@@ -122,7 +122,7 @@ function viewSemana() {
   for (const b of batches) {
     const where = b.fresh ? '<span class="badge warn">cozinhar no próprio dia</span>' : `${b.fridgeCount ? `<span class="badge">${b.fridgeCount} no frigorífico</span>` : ''}${b.freezeCount ? `<span class="badge ice">${b.freezeCount} no congelador</span>` : ''}`;
     const k = `prep:${week}:${b.rid}`;
-    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br>Fazer ${fmt(b.mult, 1)}× a receita (rende ${fmt(b.mult * (b.r.units || 1), 1)} ${plural(b.r.unitLabel || 'porção', 2)})<br>${where}${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
+    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br>Fazer ${fmt(b.mult, 1)}× a receita (rende ${fmt(b.mult * (b.r.units || 1), 1)} ${plural(b.r.unitLabel || 'porção', 2)})<br>${where}<br><input type="number" inputmode="numeric" placeholder="peso do tacho pronto (g)" value="${s.prepWeights?.[week + ':' + b.rid] || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:230px;margin-top:6px">${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
   }
   h += `</ul></div>`;
   return h;
@@ -256,6 +256,20 @@ function viewPerfil() {
 }
 
 // ---------- modais ----------
+function mealModal(date, slot) {
+  const s = S.get(); const plan = planFor(date); if (!plan) return;
+  const day = plan.days.find((d) => d.date === date); const m = day.meals[slot]; const r = rec(m.rid); const pid = ui.who;
+  const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose); const f = dose / (r.units || 1);
+  const who = people().find((p) => p.id === pid).name;
+  const b = C.batchesOf(plan, RS).find((x) => x.rid === r.id); const pw = s.prepWeights?.[plan.week + ':' + r.id];
+  const grams = pw && b ? Math.round((pw / (b.mult * (r.units || 1))) * dose) : null;
+  const list = (r.ing || []).map((i) => (i.qty != null ? `<li><span><b>${esc(C.fmtQty(i.qty * f, i.unit))}</b> ${esc(i.name)}</span></li>` : `<li><span class="mut">${esc(i.raw)}</span></li>`)).join('');
+  openModal(`<h2 style="margin-right:30px">${esc(r.title)}</h2><p class="mut">${esc(SLOT_NAMES[slot])} de ${esc(who)}: <b>${esc(doseLabel(r, dose))}</b> · ${n.kcal} kcal · P ${n.p}g · G ${n.f}g · H ${n.c}g</p>
+  ${grams ? `<div class="alert ice"><b>Do prato pronto: cerca de ${grams} g</b>Calculado a partir do peso do tacho que registaste no dia de prep.</div>` : `<div class="alert ice"><b>Quanto servir do prato pronto?</b>Depois de cozinhar, pesa o tacho todo e escreve o peso em Semana > Dia de prep. A app diz-te os gramas para cada pessoa.</div>`}
+  <h3>Ingredientes desta dose (em cru)</h3><div class="card"><ul class="clean">${list}</ul></div>
+  <p class="mut small">Estas quantidades são a receita inteira dividida pelas porções e multiplicada pela tua dose. Temperos sem quantidade ficam a gosto.</p>
+  <div class="row"><button class="btn sec" data-act="recipe" data-id="${r.id}">Ver receita completa</button></div>`);
+}
 function openModal(html) { $('#mbody').innerHTML = html; $('#modal').hidden = false; $('.sheet').scrollTop = 0; }
 function closeModal() { $('#modal').hidden = true; $('#mbody').innerHTML = ''; }
 function swapModal(date, slot) {
@@ -311,6 +325,7 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'swq') { const v = e.target.value.toLowerCase(); document.querySelectorAll('#swlist .card').forEach((c) => (c.style.display = c.dataset.t.includes(v) ? '' : 'none')); }
 });
 document.addEventListener('change', (e) => {
+  if (e.target.dataset?.act === 'pw') { const v = Math.round(num(e.target.value, 0)); S.update((x) => { (x.prepWeights ||= {})[e.target.dataset.k] = v || null; }); toast('Peso guardado'); return; }
   if (e.target.id === 'imp') { const f = e.target.files[0]; if (!f) return; f.text().then((t) => { try { S.replaceAll(JSON.parse(t)); toast('Cópia importada'); render(); } catch { toast('Ficheiro inválido'); } }); }
 });
 let deferredInstall = null;
@@ -320,10 +335,12 @@ document.addEventListener('click', async (e) => {
   const tab = e.target.closest('#tabs button'); if (tab) { ui.tab = tab.dataset.tab; lsSet('pl.tab', ui.tab); render(); window.scrollTo(0, 0); return; }
   const who = e.target.closest('[data-who]'); if (who) { ui.who = who.dataset.who; lsSet('pl.who', ui.who); render(); return; }
   if (e.target.id === 'mclose' || e.target.id === 'modal') return closeModal();
+  if (e.target.closest('a[data-act]')) e.preventDefault();
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act; const d = el.dataset;
   const s = S.get();
   if (a === 'mclose') return closeModal();
+  if (a === 'meal') return mealModal(d.d, d.slot);
   if (a === 'recipe') return recipeModal(d.id);
   if (a === 'editrec') return editModal(d.id);
   if (a === 'newrec') return editModal(null);

@@ -269,6 +269,7 @@ const UNIT_LABEL = { g: 'g', kg: 'kg', ml: 'ml', l: 'l', chav: 'chávena(s)', cs
 export function fmtQty(q, unit) {
   if (unit === 'g' && q >= 1000) { q /= 1000; unit = 'kg'; }
   if (unit === 'ml' && q >= 1000) { q /= 1000; unit = 'l'; }
+  if (['', 'chav', 'csp', 'cch', 'dente', 'fatia', 'lata', 'punhado', 'folha'].includes(unit) && q < 10) { const t = doseTxt(Math.max(0.25, q)); return `${t} ${UNIT_LABEL[unit] ?? unit}`.trim(); }
   const r = q >= 10 ? Math.round(q) : Math.round(q * 10) / 10;
   return `${String(r).replace('.', ',')}${unit === 'g' || unit === 'kg' || unit === 'ml' || unit === 'l' ? ' ' : ' '}${UNIT_LABEL[unit] ?? unit}`.trim();
 }
