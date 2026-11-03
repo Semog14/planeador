@@ -246,7 +246,7 @@ export function batchesOf(plan, recipes) {
 }
 
 // ---------- lista de compras ----------
-const STAPLES = /^(sal|pimenta|azeite|água|agua|óleo|oleo|orégãos?|oregãos?|cominhos?|paprik|pimentão|pimentao|canela|cúrcuma|curcuma|alho em pó|louro|folhas de louro|temperos?|gengibre em pó|noz-moscada|vinagre)/i;
+const STAPLES = /^(generos[oa]s? de sal|fios?|toques?|sal|pimenta|azeite|água|agua|óleo|oleo|orégãos?|oregãos?|cominhos?|paprik|pimentão|pimentao|canela|cúrcuma|curcuma|alho em pó|louro|folhas de louro|temperos?|gengibre em pó|noz-moscada|vinagre)/i;
 const CAT_RULES = [
   ['Mercearia', /caldo|natas de coco|leite de coco|leite de amêndoa|bebida/],
   ['Talho', /frango|peru|carne|vaca|bife|peito/],
@@ -258,13 +258,17 @@ const CAT_RULES = [
   ['Mercearia', /./],
 ];
 function catOf(name) { const n = name.toLowerCase(); for (const [c, re] of CAT_RULES) if (re.test(n)) return c; return 'Mercearia'; }
-function dispName(s) { return s.split(/[,(*]/)[0].replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, '').trim(); }
+const ADJ = /\b(picad[oa]s?|ralad[oa]s?|cozid[oa]s?|descascad[oa]s?|fatiad[oa]s?|cortad[oa]s?|esmagad[oa]s?|batid[oa]s?|triturad[oa]s?|madur[oa]s?|grandes?|pequen[oa]s?|médi[oa]s?|médio-grandes?|fresc[oa]s?|cr[uú]a?s?|sem pele|sem caroço|opcional|finamente|bem)\b/g;
 function normName(s) {
-  let n = s.toLowerCase().split(/[,(*]/)[0].trim();
-  n = n.replace(/\b(picad[oa]s?|ralad[oa]s?|cozid[oa]s?|descascad[oa]s?|fatiad[oa]s?|cortad[oa]s?|maduras?|grandes?|pequenas?|médi[oa]s?|frescas?|frescos?|sem pele|sem caroço|opcional)\b/g, '').replace(/\s+/g, ' ').trim();
-  n = n.split(' ').map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)).join(' ');
-  return n;
+  let n = s.toLowerCase().split(/[,(*;]/)[0].replace(/^(de|do|da|dos|das|uns|umas)\s+/, '').replace(ADJ, '').replace(/\s+/g, ' ').trim().replace(/^((mão|mões|mãos)(-| )cheias?|fin[oa]s?|cheias?|generos[oa]s?|fios?|toques?)\s+(de\s+|para\s+servir\s*)?/, '').replace(/\s+para servir$/, '');
+  return n.split(' ').map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)).join(' ');
 }
+function pluralName(n, q) {
+  if (q <= 1.01 || /^(espinafre|salsa|coentro|hortelã|rúcula|manjericão|alface|cebolinho|gengibre|sal|azeite|arroz|aveia)/.test(n)) return n;
+  const pl = (w) => (/^(limão|feijão|pimentão|melão)$/.test(w) ? w.slice(0, -2) + 'ões' : w.endsWith('ão') ? w + 's' : w.endsWith('l') ? w.slice(0, -1) + 'is' : w.endsWith('s') ? w : w + 's');
+  const parts = n.split(' '); parts[0] = parts[0].split('-').map(pl).join('-'); return parts.join(' ');
+}
+function dispName(s) { return normName(s); }
 const UNIT_LABEL = { g: 'g', kg: 'kg', ml: 'ml', l: 'l', chav: 'chávena(s)', csp: 'colher(es) de sopa', cch: 'colher(es) de chá', dente: 'dente(s)', fatia: 'fatia(s)', punhado: 'punhado(s)', lata: 'lata(s)', folha: 'folha(s)', ramo: 'ramo(s)', pitada: 'pitada(s)', '': '' };
 export function fmtQty(q, unit) {
   if (unit === 'g' && q >= 1000) { q /= 1000; unit = 'kg'; }
@@ -282,13 +286,13 @@ export function shoppingList(plan, recipes) {
       if (bad(key0)) continue;
       if (STAPLES.test(key0) || STAPLES.test((ing.raw || '').toLowerCase())) { staples[key0] = (staples[key0] || new Set()).add(b.r.title); continue; }
       if (ing.qty == null) { notes[key0] = (notes[key0] || new Set()).add(b.r.title); continue; }
-      const key = key0 + '|' + ing.unit;
-      const it = (items[key] ||= { key, name: key0, disp: dispName(ing.name || ing.raw), unit: ing.unit, qty: 0, cat: catOf(key0), from: new Set() });
+      const al = key0 === 'alho'; const key = key0 + '|' + (al ? 'dente' : ing.unit);
+      const it = (items[key] ||= { key, name: key0, disp: dispName(ing.name || ing.raw), unit: al ? 'dente' : ing.unit, qty: 0, cat: catOf(key0), from: new Set() });
       it.qty += ing.qty * b.mult; it.from.add(b.r.title);
     }
   }
   const byCat = {};
-  for (const it of Object.values(items)) (byCat[it.cat] ||= []).push({ ...it, from: [...it.from], label: `${fmtQty(it.qty, it.unit)} ${it.disp}`.replace(/\s+/g, ' ').trim() });
+  for (const it of Object.values(items)) (byCat[it.cat] ||= []).push({ ...it, from: [...it.from], label: it.unit === 'dente' ? `${fmtQty(it.qty, '')} ${it.qty > 1.01 ? 'dentes' : 'dente'} de alho`.replace(/\s+/g, ' ') : `${fmtQty(it.qty, it.unit)} ${it.unit === '' ? pluralName(it.disp, it.qty) : it.disp}`.replace(/\s+/g, ' ').trim() });
   const order = ['Frutas e legumes', 'Talho', 'Peixaria', 'Laticínios e ovos', 'Padaria', 'Mercearia', 'Congelados e conservas'];
   const cats = order.filter((c) => byCat[c]).map((c) => ({ cat: c, items: byCat[c].sort((a, b) => a.name.localeCompare(b.name, 'pt')) }));
   const toCheck = Object.entries(notes).filter(([k]) => !items[k + '|']).map(([k, v]) => k).sort((a, b) => a.localeCompare(b, 'pt'));
