@@ -13,6 +13,12 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 let BASE = [];
 let ui = { tab: lsGet('pl.tab', 'hoje'), who: lsGet('pl.who', 'p1'), week: null, day: null, filter: { q: '', slot: '', child: '', plan: '' }, shopWeek: null };
 let RS = [];
+let IMG = {};
+const PLATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/></svg>';
+const photo = (r) => (IMG[r.id] ? `<img alt="" loading="lazy" decoding="async" src="${IMG[r.id]}">` : PLATE);
+const SLOT_HOUR = [9.5, 12, 15, 18.5, 99];
+function nowSlot() { const t = C.lisbonNow(); const h = t.hour + t.minute / 60; return SLOTS[SLOT_HOUR.findIndex((x) => h < x)]; }
+const WD = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const COUNTABLE = C.COUNTABLE;
 
 // ---------- utilitários ----------
@@ -47,51 +53,52 @@ function renderWho() {
 function render() { recompute(); renderWho(); const v = $('#view'); const fn = { hoje: viewHoje, semana: viewSemana, compras: viewCompras, receitas: viewReceitas, perfil: viewPerfil }[ui.tab]; const y = window.scrollY; v.innerHTML = fn(); if (ui.keepScroll) window.scrollTo(0, y); }
 
 // ---------- HOJE ----------
-function macroBar(tot, tgt) {
-  const pct = Math.min(100, Math.round((tot.kcal / tgt.kcal) * 100));
-  return `<div class="card"><div class="row"><b>${fmt(tot.kcal)} kcal</b><span class="mut">de ${fmt(tgt.kcal)}</span><span class="sp"></span><span class="mut">${pct}%</span></div><div class="bar"><i style="width:${pct}%"></i></div>
-  <div class="macros"><span>Proteína <b>${tot.p} g</b> / ${tgt.protein}</span><span>Gordura <b>${tot.f} g</b> / ${tgt.fat}</span><span>Hidratos líq. <b>${tot.c} g</b> / ${tgt.carbs}</span></div></div>`;
+function summary(tot, tgt) {
+  const C2 = 2 * Math.PI * 44; const ratio = tot.kcal / tgt.kcal; const off = C2 * (1 - Math.min(1, ratio));
+  const bar = (l, v, t, u = 'g') => `<div class="mb2"><div class="l"><span>${l}</span><span><b>${v}</b> / ${t} ${u}</span></div><div class="bar"><i style="width:${Math.min(100, Math.round((v / Math.max(1, t)) * 100))}%"></i></div></div>`;
+  return `<div class="card sum"><div class="ring ${ratio > 1.05 ? 'over' : ''}"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="44"/><circle class="fg" cx="50" cy="50" r="44" stroke-dasharray="${C2.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg><div class="c"><b>${fmt(tot.kcal)}</b><span>de ${fmt(tgt.kcal)} kcal</span></div></div>
+  <div class="mbars">${bar('Proteína', tot.p, tgt.protein)}${bar('Gordura', tot.f, tgt.fat)}${bar('Hidratos líq.', tot.c, tgt.carbs)}</div></div>`;
 }
 function modeBadge(m, r) {
   if (m.mode === 'freezer') return `<span class="badge ice">❄ descongelar na véspera</span>`;
   if (m.mode === 'fresh') return `<span class="badge warn">🍳 fazer na hora</span>`;
-  return `<span class="badge">frigorífico${r && r.fridge ? ' (até ' + r.fridge + ' dias)' : ''}</span>`;
+  return `<span class="badge">frigorífico${r && r.fridge ? ' · até ' + r.fridge + ' dias' : ''}</span>`;
 }
 function childBadge(r) {
-  const l = r.child?.level; if (l === 'avoid') return `<span class="badge bad">⚠ não indicado p/ criança</span>`; if (l === 'adapt') return `<span class="badge warn">adaptar p/ criança</span>`; return '';
+  const l = r.child?.level; if (l === 'avoid') return `<span class="badge bad">⚠ não p/ criança</span>`; if (l === 'adapt') return `<span class="badge warn">adaptar p/ criança</span>`; return '';
 }
+function mealCard(date, slot, m, r, pid, o = {}) {
+  const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose);
+  return `<article class="meal ${o.now ? 'now' : ''} ${o.done ? 'is-done' : ''}"><button class="thumb" data-act="recipe" data-id="${r.id}" aria-label="Ver receita">${photo(r)}</button>
+  <div class="mbody"><div class="eyebrow">${SLOT_NAMES[slot]}</div><h4 class="mt" data-act="recipe" data-id="${r.id}" style="margin:2px 0 4px">${esc(r.title)}</h4>
+  <div class="dose"><b>${esc(doseLabel(r, dose))}</b> · ${n.kcal} kcal</div><div class="mac"><span>P <b>${n.p}g</b></span><span>G <b>${n.f}g</b></span><span>H <b>${n.c}g</b></span></div>
+  <div class="tags">${modeBadge(m, r)}${childBadge(r)}</div>
+  <div class="acts"><a href="#" class="chipbtn" data-act="meal" data-d="${date}" data-slot="${slot}">Quantidades</a>${o.swap ? `<button class="chipbtn" style="border:0" data-act="swap" data-d="${date}" data-slot="${slot}">Trocar</button>` : ''}</div></div>
+  ${o.check ? `<label class="check"><input type="checkbox" data-act="done" data-slot="${slot}" ${o.done ? 'checked' : ''} aria-label="Marcar como comido"></label>` : ''}</article>`;
+}
+function emptyState(title, text, btn) { return `<div class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/></svg><h2 style="margin:8px 0 4px;font-size:19px">${title}</h2><p class="mut">${text}</p>${btn || ''}</div>`; }
 function viewHoje() {
-  const s = S.get(); const date = today(); const plan = planFor(date); const pid = ui.who;
-  const dow = C.dow(date);
-  let h = `<h2>${esc(C.fmtLong(date))}</h2>`;
-  // avisos
+  const s = S.get(); const date = today(); const plan = planFor(date); const pid = ui.who; const dow = C.dow(date);
+  const me = people().find((p) => p.id === pid);
+  let h = `<h2>${esc(C.fmtLong(date).replace(/^./, (c) => c.toUpperCase()))}</h2><p class="sub">Plano de ${esc(me.name)}</p>`;
+  if (!Object.keys(IMG).length) h += `<div class="alert ice"><b>Dá cor à app com as fotos do livro</b>Em Perfil > Fotos das receitas, importa o ficheiro imagens-livro.json.</div>`;
   const tom = C.addDays(date, 1); const planT = planFor(tom);
   if (planT) { const th = C.thawList(planT, RS, date); if (th.length) h += `<div class="alert ice"><b>❄ Descongelar hoje para amanhã</b>${th.map((t) => `${SLOT_NAMES[t.slot]}: ${esc(t.title)}`).join('<br>')}</div>`; }
   if (plan) { const lf = C.lastFridgeDay(plan, RS, date); if (lf.length) h += `<div class="alert"><b>Último dia de validade no frigorífico</b>${lf.map((t) => `${SLOT_NAMES[t.slot]}: ${esc(t.title)}`).join('<br>')}</div>`; }
   const up = C.nextMonday(date); const upPlan = planOfWeek(up);
   if (dow === s.settings.prepDay) h += `<div class="alert ice"><b>Hoje é dia de prep</b>${upPlan ? 'Vê os lotes a cozinhar no separador Semana.' : 'Ainda não há plano para a próxima semana. Gera-o no separador Semana.'}</div>`;
-  if (!plan) {
-    h += `<div class="card">${dow === s.settings.freeDay ? '<b>Dia livre</b><p class="mut">Hoje não há refeições planeadas.</p>' : '<b>Sem plano para esta semana</b><p class="mut">Gera um plano para começar.</p>'}<button class="btn" data-act="gen" data-week="${C.mondayOf(date)}">Gerar plano desta semana</button></div>`;
-    return h;
-  }
+  if (!plan) return h + (dow === s.settings.freeDay ? emptyState('Dia livre', 'Hoje não há refeições planeadas. Aproveita.') : emptyState('Sem plano para esta semana', 'Gera um plano para começar.', `<button class="btn" data-act="gen" data-week="${C.mondayOf(date)}">Gerar plano desta semana</button>`));
   const day = plan.days.find((d) => d.date === date);
-  if (!day) { return h + `<div class="card"><b>Dia livre</b><p class="mut">Hoje não há refeições planeadas.</p></div>`; }
-  const tot = C.dayTotals(day, RS, pid); h += macroBar(tot, target(pid));
+  if (!day) return h + emptyState('Dia livre', 'Hoje não há refeições planeadas. Aproveita.');
+  h += summary(C.dayTotals(day, RS, pid), target(pid));
   const alertsToday = SLOTS.map((sl) => rec(day.meals[sl].rid)).filter((r) => r && (r.child?.level === 'avoid' || r.child?.level === 'adapt'));
   if (alertsToday.length) {
     const seen = new Set();
-    h += `<div class="alert ${alertsToday.some((r) => r.child.level === 'avoid') ? 'bad' : ''}"><b>Atenção: ${esc(s.child.name)} come estas refeições</b>${alertsToday.filter((r) => !seen.has(r.id) && seen.add(r.id)).map((r) => `<div style="margin-top:4px"><u>${esc(r.title)}</u><br>${[...(r.child.avoid || []), ...(r.child.adapt || [])].map(esc).join('<br>')}</div>`).join('')}</div>`;
+    h += `<div class="alert ${alertsToday.some((r) => r.child.level === 'avoid') ? 'bad' : ''}"><b>Atenção: ${esc(s.child.name)} come estas refeições</b>${alertsToday.filter((r) => !seen.has(r.id) && seen.add(r.id)).map((r) => `<div style="margin-top:6px"><u>${esc(r.title)}</u><br>${[...(r.child.avoid || []), ...(r.child.adapt || [])].map(esc).join('<br>')}</div>`).join('')}</div>`;
   }
-  for (const slot of SLOTS) {
-    const m = day.meals[slot]; const r = rec(m.rid); if (!r) continue;
-    const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose);
-    const done = !!s.done?.[date]?.[pid]?.[slot];
-    h += `<div class="card slot"><div class="t">${SLOT_NAMES[slot]}</div><div class="b"><div class="n" data-act="recipe" data-id="${r.id}" style="cursor:pointer">${esc(r.title)}</div>
-    <div>${esc(doseLabel(r, dose))} · <b>${n.kcal} kcal</b> <a href="#" data-act="meal" data-d="${date}" data-slot="${slot}" style="color:var(--pri);font-weight:600">ver quantidades</a></div><div class="macros"><span>P <b>${n.p}g</b></span><span>G <b>${n.f}g</b></span><span>H <b>${n.c}g</b></span></div>
-    <div>${modeBadge(m, r)}${childBadge(r)}</div></div><input type="checkbox" data-act="done" data-slot="${slot}" ${done ? 'checked' : ''} aria-label="Marcar como comido"></div>`;
-  }
-  h += `<p class="mut small">Os valores vêm das macros do livro. Hidratos líquidos = hidratos totais menos fibra.</p>`;
-  return h;
+  const ns = nowSlot();
+  for (const slot of SLOTS) { const m = day.meals[slot]; const r = rec(m.rid); if (!r) continue; const done = !!s.done?.[date]?.[pid]?.[slot]; h += mealCard(date, slot, m, r, pid, { now: slot === ns && !done, done, check: true }); }
+  return h + `<p class="mut small">Valores do livro. Hidratos líquidos = hidratos totais menos fibra.</p>`;
 }
 
 // ---------- SEMANA ----------
@@ -99,33 +106,24 @@ function viewSemana() {
   const s = S.get(); const t = today();
   if (!ui.week) ui.week = planOfWeek(C.mondayOf(t)) && C.dow(t) !== s.settings.prepDay ? C.mondayOf(t) : C.nextMonday(t);
   const week = ui.week; const plan = planOfWeek(week);
-  let h = `<div class="row"><button class="ghost" data-act="wk" data-d="-7">◀</button><h2 class="sp" style="text-align:center;margin:0">Semana de ${esc(C.fmtDate(week))}</h2><button class="ghost" data-act="wk" data-d="7">▶</button></div>`;
-  if (!plan) {
-    return h + `<div class="card"><p>Ainda não há plano para esta semana.</p><button class="btn" data-act="gen" data-week="${week}">Gerar plano</button></div>`;
-  }
+  let h = `<div class="wk"><button class="ghost" data-act="wk" data-d="-7" aria-label="Semana anterior">◀</button><h2>Semana de ${esc(C.fmtDate(week))}</h2><button class="ghost" data-act="wk" data-d="7" aria-label="Semana seguinte">▶</button></div>`;
+  if (!plan) return h + emptyState('Ainda sem plano', 'Gera o plano desta semana com as tuas receitas.', `<button class="btn" data-act="gen" data-week="${week}">Gerar plano</button>`);
   if (!ui.day || !plan.days.some((d) => d.date === ui.day)) ui.day = plan.days.find((d) => d.date >= t)?.date || plan.days[0].date;
-  h += `<div class="row" style="margin:8px 0"><button class="btn sec" data-act="gen" data-week="${week}" data-re="1">🔀 Novo plano</button><button class="btn sec" data-act="email" data-week="${week}">✉ Pré-visualizar email</button></div>`;
-  // avisos da criança
+  h += `<div class="days">${plan.days.map((d) => `<button class="dbtn ${d.date === ui.day ? 'on' : ''}" data-act="day" data-d="${d.date}"><small>${WD[C.dow(d.date)].slice(0, 3)}</small><b>${+d.date.slice(8)}</b></button>`).join('')}</div>`;
   const al = C.childAlerts(plan, RS);
   if (al.length) h += `<div class="alert ${al.some((a) => a.level === 'avoid') ? 'bad' : ''}"><b>Alertas para ${esc(s.child.name)} nesta semana</b>${al.map((a) => `${a.level === 'avoid' ? '🚫' : '⚠'} <u>${esc(a.title)}</u>: ${a.notes.map(esc).join(' ')}`).join('<br><br>')}</div>`;
-  h += `<div class="days">${plan.days.map((d) => `<button data-act="day" data-d="${d.date}" class="${d.date === ui.day ? 'on' : ''}">${esc(C.fmtDate(d.date))}</button>`).join('')}</div>`;
   const day = plan.days.find((d) => d.date === ui.day); const pid = ui.who;
-  h += macroBar(C.dayTotals(day, RS, pid), target(pid));
-  for (const slot of SLOTS) {
-    const m = day.meals[slot]; const r = rec(m.rid); if (!r) continue;
-    const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose);
-    h += `<div class="card slot"><div class="t">${SLOT_NAMES[slot]}</div><div class="b"><div class="n" data-act="recipe" data-id="${r.id}" style="cursor:pointer">${esc(r.title)}</div><div>${esc(doseLabel(r, dose))} · <b>${n.kcal} kcal</b> <a href="#" data-act="meal" data-d="${day.date}" data-slot="${slot}" style="color:var(--pri);font-weight:600">ver quantidades</a><br>P ${n.p}g · G ${n.f}g · H ${n.c}g</div><div>${modeBadge(m, r)}${childBadge(r)}</div></div><button class="ghost" data-act="swap" data-d="${day.date}" data-slot="${slot}">Trocar</button></div>`;
-  }
-  // prep
+  h += summary(C.dayTotals(day, RS, pid), target(pid));
+  for (const slot of SLOTS) { const m = day.meals[slot]; const r = rec(m.rid); if (!r) continue; h += mealCard(day.date, slot, m, r, pid, { swap: true }); }
+  h += `<div class="row" style="margin:16px 0 4px;flex-wrap:wrap"><button class="btn sec" data-act="gen" data-week="${week}" data-re="1">🔀 Novo plano</button><button class="btn sec" data-act="email" data-week="${week}">✉ Ver email da sexta</button></div>`;
   const batches = C.batchesOf(plan, RS);
-  h += `<h3>Dia de prep: ${esc(C.fmtLong(plan.prep))}</h3><div class="card"><ul class="clean">`;
+  h += `<h3>Dia de prep · ${esc(C.fmtLong(plan.prep))}</h3><div class="card"><ul class="clean">`;
   for (const b of batches) {
     const where = b.fresh ? '<span class="badge warn">cozinhar no próprio dia</span>' : `${b.fridgeCount ? `<span class="badge">${b.fridgeCount} no frigorífico</span>` : ''}${b.freezeCount ? `<span class="badge ice">${b.freezeCount} no congelador</span>` : ''}`;
     const k = `prep:${week}:${b.rid}`;
-    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br>Fazer ${fmt(b.mult, 1)}× a receita (rende ${fmt(b.mult * (b.r.units || 1), 1)} ${plural(b.r.unitLabel || 'porção', 2)})<br>${where}<br><input type="number" inputmode="numeric" placeholder="peso do tacho pronto (g)" value="${s.prepWeights?.[week + ':' + b.rid] || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:230px;margin-top:6px">${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
+    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l" style="flex:1"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br><span class="mut">Fazer ${fmt(b.mult, 1)}× a receita · rende ${fmt(b.mult * (b.r.units || 1), 1)} ${plural(b.r.unitLabel || 'porção', 2)}</span><br>${where}<br><input type="number" inputmode="numeric" placeholder="peso do tacho pronto (g)" value="${s.prepWeights?.[week + ':' + b.rid] || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:230px;margin-top:8px">${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
   }
-  h += `</ul></div>`;
-  return h;
+  return h + `</ul></div>`;
 }
 
 // ---------- COMPRAS ----------
@@ -133,12 +131,13 @@ function viewCompras() {
   const s = S.get(); const t = today();
   if (!ui.shopWeek) ui.shopWeek = planOfWeek(C.nextMonday(t)) ? C.nextMonday(t) : (planOfWeek(C.mondayOf(t)) ? C.mondayOf(t) : C.nextMonday(t));
   const week = ui.shopWeek; const plan = planOfWeek(week);
-  let h = `<div class="row"><button class="ghost" data-act="shopwk" data-d="-7">◀</button><h2 class="sp" style="text-align:center;margin:0">Compras para ${esc(C.fmtDate(week))}</h2><button class="ghost" data-act="shopwk" data-d="7">▶</button></div>`;
-  if (!plan) return h + `<div class="card"><p>Ainda não há plano para esta semana.</p><button class="btn" data-act="gen" data-week="${week}">Gerar plano</button></div>`;
+  let h = `<div class="wk"><button class="ghost" data-act="shopwk" data-d="-7" aria-label="Semana anterior">◀</button><h2>Compras · ${esc(C.fmtDate(week))}</h2><button class="ghost" data-act="shopwk" data-d="7" aria-label="Semana seguinte">▶</button></div>`;
+  if (!plan) return h + emptyState('Ainda sem lista', 'A lista nasce do plano da semana.', `<button class="btn" data-act="gen" data-week="${week}">Gerar plano</button>`);
   const sh = C.shoppingList(plan, RS);
-  h += `<div class="row" style="margin:8px 0"><button class="btn sec" data-act="copyshop">Copiar lista</button></div>`;
+  const allK = sh.cats.flatMap((c) => c.items.map((it) => `shop:${week}:${it.key}`)); const got = allK.filter((k) => s.checked?.[k]).length;
+  h += `<div class="prog"><div class="bar"><i style="width:${allK.length ? Math.round((got / allK.length) * 100) : 0}%"></i></div><span>${got}/${allK.length}</span><button class="chipbtn" style="border:0" data-act="copyshop">Copiar</button></div>`;
   for (const c of sh.cats) {
-    h += `<h3>${esc(c.cat)}</h3><div class="card"><ul class="clean">`;
+    h += `<h3>${esc(c.cat)}</h3><div class="card" style="padding:4px 16px"><ul class="clean">`;
     for (const it of c.items) { const k = `shop:${week}:${it.key}`; h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${esc(k)}" ${s.checked?.[k] ? 'checked' : ''}><span class="l">${esc(it.label)}<br><span class="mut small">${esc(it.from.slice(0, 3).join(', '))}${it.from.length > 3 ? '…' : ''}</span></span></li>`; }
     h += `</ul></div>`;
   }
@@ -154,19 +153,18 @@ function viewReceitas() {
   let list = RS.filter((r) => (!q || r.title.toLowerCase().includes(q)) && (!f.slot || r.slot === f.slot) && (!f.child || (f.child === 'ok' ? ['ok', 'tips'].includes(r.child?.level) : r.child?.level === f.child)) && (!f.plan || (f.plan === '1' ? r.plan : !r.plan)));
   list = list.sort((a, b) => a.title.localeCompare(b.title, 'pt'));
   const chip = (k, v, l) => `<button data-act="flt" data-k="${k}" data-v="${v}" class="${f[k] === v ? 'on' : ''}">${l}</button>`;
-  let h = `<div class="row"><h2 class="sp">Receitas (${list.length})</h2><button class="btn" data-act="newrec">+ Nova</button></div>
-  <input id="q" type="search" placeholder="Pesquisar" value="${esc(f.q)}">
-  <div class="chips">${chip('slot', 'pa', 'Pequeno-almoço')}${chip('slot', 'main', 'Almoço/jantar')}${chip('slot', 'sn', 'Snacks')}${chip('child', 'ok', 'Boas p/ criança')}${chip('child', 'avoid', 'Não p/ criança')}${chip('plan', '0', 'Fora do planeador')}</div>`;
+  let h = `<div class="row"><h2 class="sp">Receitas</h2><button class="btn" data-act="newrec">+ Nova</button></div><input id="q" type="search" placeholder="Pesquisar entre ${RS.length} receitas" value="${esc(f.q)}">
+  <div class="chips">${chip('slot', 'pa', 'Pequeno-almoço')}${chip('slot', 'main', 'Almoço e jantar')}${chip('slot', 'sn', 'Snacks')}${chip('child', 'ok', 'Boas p/ criança')}${chip('child', 'avoid', 'Não p/ criança')}${chip('plan', '0', 'Fora do planeador')}</div><div class="rgrid">`;
   for (const r of list) {
-    h += `<div class="card" data-act="recipe" data-id="${r.id}" style="cursor:pointer"><div class="n"><b>${esc(r.title)}</b></div><div class="mut small">${r.per ? `${fmt(r.per.kcal)} kcal por ${esc(r.unitLabel || 'porção')} · P ${fmt(r.per.p)}g · G ${fmt(r.per.f)}g · H ${fmt(r.per.c)}g` : 'Sem macros por unidade'}</div>
-    <div>${r.plan ? '' : '<span class="badge warn">fora do planeador</span>'}${childBadge(r)}${r.fridge ? `<span class="badge">frigorífico ${r.fridge}d</span>` : ''}${r.freezer ? '<span class="badge ice">congela</span>' : ''}</div></div>`;
+    const lvl = r.child?.level === 'tips' ? 'ok' : r.child?.level;
+    h += `<div class="rc" data-act="recipe" data-id="${r.id}"><div class="ph">${photo(r)}${r.per ? `<span class="k">${fmt(r.per.kcal)} kcal</span>` : ''}<span class="d ${lvl}" title="${lvl === 'ok' ? 'Boa para a criança' : lvl === 'adapt' ? 'Adaptar para a criança' : 'Não indicada para a criança'}"></span></div><div class="tx">${esc(r.title)}<span>${r.plan ? '' : 'fora do planeador · '}${r.freezer ? 'congela' : r.fridge ? 'frigorífico ' + r.fridge + 'd' : 'na hora'}</span></div></div>`;
   }
-  return h;
+  return h + '</div>' + (list.length ? '' : emptyState('Nada encontrado', 'Experimenta outra pesquisa ou limpa os filtros.'));
 }
 function recipeModal(id) {
   const r = rec(id); if (!r) return;
   const s = S.get();
-  let h = `<h2 style="margin-right:30px">${esc(r.title)}</h2>`;
+  let h = `<div class="hero">${photo(r)}</div><h2>${esc(r.title)}</h2>`;
   h += `<div class="card"><div class="kv"><span>Rende</span><span>${fmt(r.units || 0, 1)} ${esc(plural(r.unitLabel || 'porção', 2))}${r.est ? ' (estimado)' : ''}</span>
   <span>Por ${esc(r.unitLabel || 'porção')}</span><span>${r.per ? `${fmt(r.per.kcal)} kcal · P ${fmt(r.per.p)}g · G ${fmt(r.per.f)}g · H líq. ${fmt(r.per.c)}g` : 'não indicado no livro'}</span>
   <span>Tempo</span><span>${esc(r.time || '-')}</span>
@@ -247,7 +245,7 @@ function viewPerfil() {
   <label>Receitas diferentes por semana: PA / Lanche manhã / Almoço / Lanche / Jantar</label><div class="grid5">${SLOTS.map((k) => `<input name="v_${k}" inputmode="numeric" value="${st.variety[k]}">`).join('')}</div>
   <label>Máximo de lanches doces por semana (aprox.)</label><input name="sweetMax" inputmode="numeric" value="${st.sweetMax}">
   <div class="row" style="margin-top:12px"><button class="btn" type="submit">Guardar</button></div></form>`;
-  h += `<div class="card"><b>Este telemóvel</b><div class="kv" style="margin:8px 0"><span>Sincronização</span><span>${S.getFid() ? 'Ativa' : 'Modo local (não configurada)'}</span>${S.getFid() ? `<span>Código da família</span><span style="word-break:break-all;user-select:all">${S.getFid()}</span>` : ''}</div>
+  h += `<div class="card"><b>Fotos das receitas</b><p class="mut small">${Object.keys(IMG).length ? Object.keys(IMG).length + ' fotos carregadas.' : 'Ainda sem fotos.'} Escolhe o ficheiro imagens-livro.json (só uma vez, num dos telemóveis).</p><input id="imgfile" type="file" accept="application/json"><p id="imgprog" class="mut small"></p></div><div class="card"><b>Este telemóvel</b><div class="kv" style="margin:8px 0"><span>Sincronização</span><span>${S.getFid() ? 'Ativa' : 'Modo local (não configurada)'}</span>${S.getFid() ? `<span>Código da família</span><span style="word-break:break-all;user-select:all">${S.getFid()}</span>` : ''}</div>
   <label>Notificações deste telemóvel são para</label><select id="pushwho">${people().map((p) => `<option value="${p.id}" ${p.id === ui.who ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
   <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sec" data-act="push">Ativar notificações</button><button class="btn sec" data-act="pushtest">Testar</button>${S.getFid() ? '<button class="btn sec" data-act="share">Convidar (copiar link)</button>' : ''}</div>
   <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sec" data-act="export">Exportar cópia</button><button class="btn sec" data-act="import">Importar cópia</button><input id="imp" type="file" accept="application/json" hidden></div></div>
@@ -264,7 +262,7 @@ function mealModal(date, slot) {
   const b = C.batchesOf(plan, RS).find((x) => x.rid === r.id); const pw = s.prepWeights?.[plan.week + ':' + r.id];
   const grams = pw && b ? Math.round((pw / (b.mult * (r.units || 1))) * dose) : null;
   const list = (r.ing || []).map((i) => (i.qty != null ? `<li><span><b>${esc(C.fmtQty(i.qty * f, i.unit))}</b> ${esc(i.name)}</span></li>` : `<li><span class="mut">${esc(i.raw)}</span></li>`)).join('');
-  openModal(`<h2 style="margin-right:30px">${esc(r.title)}</h2><p class="mut">${esc(SLOT_NAMES[slot])} de ${esc(who)}: <b>${esc(doseLabel(r, dose))}</b> · ${n.kcal} kcal · P ${n.p}g · G ${n.f}g · H ${n.c}g</p>
+  openModal(`<div class="hero">${photo(r)}</div><h2>${esc(r.title)}</h2><p class="mut">${esc(SLOT_NAMES[slot])} de ${esc(who)}: <b>${esc(doseLabel(r, dose))}</b> · ${n.kcal} kcal · P ${n.p}g · G ${n.f}g · H ${n.c}g</p>
   ${grams ? `<div class="alert ice"><b>Do prato pronto: cerca de ${grams} g</b>Calculado a partir do peso do tacho que registaste no dia de prep.</div>` : `<div class="alert ice"><b>Quanto servir do prato pronto?</b>Depois de cozinhar, pesa o tacho todo e escreve o peso em Semana > Dia de prep. A app diz-te os gramas para cada pessoa.</div>`}
   <h3>Ingredientes desta dose (em cru)</h3><div class="card"><ul class="clean">${list}</ul></div>
   <p class="mut small">Estas quantidades são a receita inteira dividida pelas porções e multiplicada pela tua dose. Temperos sem quantidade ficam a gosto.</p>
@@ -326,6 +324,7 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   if (e.target.dataset?.act === 'pw') { const v = Math.round(num(e.target.value, 0)); S.update((x) => { (x.prepWeights ||= {})[e.target.dataset.k] = v || null; }); toast('Peso guardado'); return; }
+  if (e.target.id === 'imgfile') { const f = e.target.files[0]; if (!f) return; const pr = $('#imgprog'); pr.textContent = 'A ler…'; f.text().then(async (t) => { try { const m = JSON.parse(t); if (!m || typeof m !== 'object' || !Object.keys(m).some((k) => /^b\d{3}$/.test(k))) throw new Error('Ficheiro inesperado'); IMG = m; await S.saveImgs(m, (p) => (pr.textContent = `A guardar na conta… ${p}%`)); pr.textContent = 'Fotos guardadas.'; toast('Fotos importadas'); render(); } catch (err) { pr.textContent = 'Erro: ' + err.message; } }); return; }
   if (e.target.id === 'imp') { const f = e.target.files[0]; if (!f) return; f.text().then((t) => { try { S.replaceAll(JSON.parse(t)); toast('Cópia importada'); render(); } catch { toast('Ficheiro inválido'); } }); }
 });
 let deferredInstall = null;
@@ -387,6 +386,7 @@ document.addEventListener('click', async (e) => {
 async function boot() {
   await S.init();
   BASE = (await S.loadBook()) || [];
+  S.loadImgs().then((m) => { IMG = m || {}; if (BASE.length) render(); });
   if (!BASE.length) return importScreen();
   S.onChange(() => { if (!document.activeElement || !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) render(); else renderWho(); });
   recompute(); render();

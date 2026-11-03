@@ -87,3 +87,25 @@ export async function saveBook(book) {
   try { localStorage.setItem(LS_BOOK, JSON.stringify(book)); } catch {}
   if (remote) await rpc('set_book', { fid: remote.fid, new_book: book });
 }
+
+// ---------- fotos das receitas (privadas, em IndexedDB + base de dados) ----------
+function idb() { return new Promise((res, rej) => { const q = indexedDB.open('planeador', 1); q.onupgradeneeded = () => q.result.createObjectStore('kv'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbGet(k) { try { const d = await idb(); return await new Promise((res) => { const r = d.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch { return null; } }
+async function idbSet(k, v) { try { const d = await idb(); await new Promise((res) => { const t = d.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch {} }
+export async function loadImgs() {
+  const local = await idbGet('imgs'); if (local && Object.keys(local).length) return local;
+  const m = {};
+  if (remote) for (let i = 0; i < 30; i++) { try { const r = await rpc('get_book', { fid: remote.fid + 'i' + i }); if (!r.length) break; Object.assign(m, r[0].book); } catch { break; } }
+  if (Object.keys(m).length) await idbSet('imgs', m);
+  return m;
+}
+export async function saveImgs(m, onProgress) {
+  await idbSet('imgs', m);
+  if (!remote) return;
+  const ids = Object.keys(m); const size = 12;
+  for (let i = 0; i * size < ids.length; i++) {
+    const chunk = Object.fromEntries(ids.slice(i * size, i * size + size).map((k) => [k, m[k]]));
+    await rpc('set_book', { fid: remote.fid + 'i' + i, new_book: chunk });
+    onProgress?.(Math.min(100, Math.round(((i + 1) * size / ids.length) * 100)));
+  }
+}
