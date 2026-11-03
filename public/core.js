@@ -128,6 +128,9 @@ export function generatePlan(state, recipes, week, seed = '') {
   const prev = state.plans?.[addDays(week, -7)];
   const prevIds = new Set(prev ? prev.days.flatMap((d) => Object.values(d.meals).map((m) => m.rid)) : []);
   const used = new Set();
+  const keyIng = {};
+  const KEY = /cenour|abacate|batata-doce|curgete|couve|espinafre|cogumelo|brócol|beterraba|abóbora|pepino|ovo/;
+  const keysOf = (r) => [...new Set((r.ing || []).map((i) => { const m = (i.name || i.raw || '').toLowerCase().match(KEY); return m && m[0]; }).filter(Boolean))];
   const pick = {};
   const variety = state.settings.variety;
   let sweetLeft = state.settings.sweetMax;
@@ -142,6 +145,7 @@ export function generatePlan(state, recipes, week, seed = '') {
       let s = scoreRecipe(r, { state }, slot) + fresh * (cat === 'main' ? 6 : 2);
       if (prevIds.has(r.id)) s += 3;
       if (used.has(r.id)) s += 50;
+      for (const k2 of keysOf(r)) s += (keyIng[k2] || 0) * 2.5;
       if (cat === 'main') { const kc = r.per.kcal; if (kc < 250) s += 3; if (kc > 900) s += 3; }
       return { r, s: s + R() * 0.8 };
     }).sort((a, b) => a.s - b.s);
@@ -152,7 +156,7 @@ export function generatePlan(state, recipes, week, seed = '') {
       const tag = (r.tags && r.tags[0]) || 'x';
       if (cat === 'main' && (protSeen[tag] || 0) >= 2) continue;
       if (r.sweet && cat !== 'main') { if (sweetLeft <= 0) continue; }
-      chosen.push(r); used.add(r.id); protSeen[tag] = (protSeen[tag] || 0) + 1;
+      chosen.push(r); used.add(r.id); for (const k2 of keysOf(r)) keyIng[k2] = (keyIng[k2] || 0) + 1; protSeen[tag] = (protSeen[tag] || 0) + 1;
       if (r.sweet && cat !== 'main') sweetLeft -= Math.ceil(dates.length / k);
     }
     pick[slot] = chosen.length ? chosen : scored.slice(0, 1).map((x) => x.r);
@@ -234,6 +238,7 @@ export function batchesOf(plan, recipes) {
     const m = day.meals[slot]; const r = recipeById(recipes, m.rid); if (!r) continue;
     const need = Object.values(m.doses || {}).reduce((a, b) => a + b, 0);
     const b = (map[r.id] ||= { rid: r.id, r, need: 0, meals: [] });
+    b.byP ||= {}; for (const [pid, dv] of Object.entries(m.doses || {})) b.byP[pid] = (b.byP[pid] || 0) + dv;
     b.need += need; b.meals.push({ date: day.date, slot, mode: m.mode });
   }
   const out = Object.values(map).map((b) => {

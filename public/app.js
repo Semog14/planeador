@@ -6,6 +6,7 @@ const { SLOTS, SLOT_NAMES } = C;
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = (v, d = 0) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : d; };
+const doseTxt2 = (n) => C.doseTxt(n);
 const fmt = (n, d = 0) => (Math.round(n * 10 ** d) / 10 ** d).toString().replace('.', ',');
 const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
@@ -121,7 +122,7 @@ function viewSemana() {
   for (const b of batches) {
     const where = b.fresh ? '<span class="badge warn">cozinhar no próprio dia</span>' : `${b.fridgeCount ? `<span class="badge">${b.fridgeCount} no frigorífico</span>` : ''}${b.freezeCount ? `<span class="badge ice">${b.freezeCount} no congelador</span>` : ''}`;
     const k = `prep:${week}:${b.rid}`;
-    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l" style="flex:1"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br><span class="mut">Fazer ${fmt(b.mult, 1)}× a receita · rende ${fmt(b.mult * (b.r.units || 1), 1)} ${plural(b.r.unitLabel || 'porção', 2)}</span><br>${where}<br><input type="number" inputmode="numeric" placeholder="peso do tacho pronto (g)" value="${s.prepWeights?.[week + ':' + b.rid] || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:230px;margin-top:8px">${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
+    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l" style="flex:1"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br><span class="mut">${b.meals.length} refeições para os 3 = <b>${doseTxt2(b.need)}</b> ${plural(b.r.unitLabel || 'porção', 2)} (${people().map((p) => esc(p.name) + ' ' + doseTxt2(b.byP?.[p.id === 'child' ? 'child' : p.id] || 0)).join(' · ')})<br>Fazer <b>${fmt(b.mult, 1)}×</b> a receita (cada uma rende ${fmt(b.r.units || 1, 1)}) → ${fmt(b.mult * (b.r.units || 1), 1)}${b.mult * (b.r.units || 1) - b.need > 0.01 ? ', sobra ' + doseTxt2(b.mult * (b.r.units || 1) - b.need) : ''}</span><br>${where}<br><input type="number" inputmode="numeric" placeholder="peso do tacho pronto (g)" value="${s.prepWeights?.[week + ':' + b.rid] || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:230px;margin-top:8px">${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
   }
   return h + `</ul></div>`;
 }
