@@ -379,5 +379,12 @@ boot();
 function importScreen() {
   $('#who').innerHTML = ''; $('#tabs').hidden = true;
   $('#view').innerHTML = `<h2>Importar as receitas do livro</h2><div class="card"><p>Por respeito pelos direitos de autor, as receitas não estão incluídas na app. Escolhe o ficheiro <b>receitas-livro.json</b> que recebeste (só é preciso fazer isto uma vez, num dos telemóveis).</p><input id="bookfile" type="file" accept="application/json"><p class="mut small">As receitas ficam guardadas na tua conta privada, só acessíveis por esta app.</p></div>`;
-  $('#bookfile').addEventListener('change', async (e) => { const f = e.target.files[0]; if (!f) return; try { const b = JSON.parse(await f.text()); if (!Array.isArray(b) || !b[0]?.title) throw 0; await S.saveBook(b); location.reload(); } catch { toast('Ficheiro inválido'); } });
+  $('#bookfile').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    let b;
+    try { b = JSON.parse(await f.text()); } catch (err) { return toast(`Não consegui ler o ficheiro (${Math.round(f.size / 1024)} KB, ${f.name}). Volta a descarregá-lo.`); }
+    if (!Array.isArray(b) || !b[0]?.title) return toast('Este ficheiro não é o receitas-livro.json');
+    try { await S.saveBook(b); } catch (err) { $('#view').insertAdjacentHTML('beforeend', `<div class="alert bad"><b>Não consegui guardar na base de dados</b>${esc(err.message)}</div>`); return toast('Falha ao guardar (ver detalhe no ecrã)'); }
+    location.reload();
+  });
 }

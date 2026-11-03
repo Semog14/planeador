@@ -23,7 +23,7 @@ function loadLocal() { try { const s = JSON.parse(localStorage.getItem(LS)); if 
 function authHeaders(k) { const h = { apikey: k, 'Content-Type': 'application/json' }; if (k.startsWith('eyJ')) h.Authorization = `Bearer ${k}`; return h; }
 async function rpc(fn, args) {
   const r = await fetch(`${CONFIG.supabaseUrl}/rest/v1/rpc/${fn}`, { method: 'POST', headers: authHeaders(CONFIG.supabaseKey), body: JSON.stringify(args) });
-  if (!r.ok) throw new Error(fn + ' ' + r.status);
+  if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 160); } catch {} throw new Error(`${fn} (${r.status}) ${t}`); }
   return r.json();
 }
 function newFid() { const a = new Uint8Array(18); crypto.getRandomValues(a); return [...a].map((b) => b.toString(16).padStart(2, '0')).join(''); }
