@@ -36,7 +36,7 @@ h1,h2{letter-spacing:-.3px}h2{font-size:24px;margin:4px 0 12px;line-height:1.15}
 .acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .chipbtn{border:0;background:var(--pri2);color:var(--pri3);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;font-weight:600;text-decoration:none;display:inline-block}
 .check{position:absolute;right:10px;top:10px}
-input[type=checkbox]{appearance:none;-webkit-appearance:none;width:26px;height:26px;border-radius:50%;border:2px solid var(--line);background:var(--card);flex:none;margin:0;display:grid;place-content:center;transition:.15s}
+input[type=checkbox],input[type=checkbox]:focus{appearance:none;-webkit-appearance:none;width:26px;min-width:26px;height:26px;min-height:26px;padding:0;border-radius:50%;border:2px solid var(--line);background:var(--card);flex:none;margin:0;display:grid;place-content:center;transition:.15s}
 input[type=checkbox]:checked{background:var(--pri);border-color:var(--pri)}input[type=checkbox]:checked::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg) translate(-1px,-1px)}
 /* avisos */
 .alert{border-radius:14px;background:var(--warnbg);padding:12px 14px;margin:12px 0;font-size:14px;color:var(--ink);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}
