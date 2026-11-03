@@ -145,7 +145,7 @@ export function generatePlan(state, recipes, week, seed = '') {
       let s = scoreRecipe(r, { state }, slot) + fresh * (cat === 'main' ? 6 : 2);
       if (prevIds.has(r.id)) s += 3;
       if (used.has(r.id)) s += 50;
-      for (const k2 of keysOf(r)) s += (keyIng[k2] || 0) * 2.5;
+      for (const k2 of keysOf(r)) s += (keyIng[k2] || 0) * (k2 === 'ovo' ? 9 : 2.5);
       if (cat === 'main') { const kc = r.per.kcal; if (kc < 250) s += 3; if (kc > 900) s += 3; }
       return { r, s: s + R() * 0.8 };
     }).sort((a, b) => a.s - b.s);
@@ -251,7 +251,7 @@ export function batchesOf(plan, recipes) {
 }
 
 // ---------- lista de compras ----------
-const STAPLES = /^(generos[oa]s? de sal|fios?|toques?|sal|pimenta|azeite|água|agua|óleo|oleo|orégãos?|oregãos?|cominhos?|paprik|pimentão|pimentao|canela|cúrcuma|curcuma|alho em pó|louro|folhas de louro|temperos?|gengibre em pó|noz-moscada|vinagre)/i;
+const STAPLES = /^(pouc|raspas?|generos[oa]s? de sal|fios?|toques?|sal|pimenta|azeite|água|agua|óleo|oleo|orégãos?|oregãos?|cominhos?|paprik|pimentão|pimentao|canela|cúrcuma|curcuma|alho em pó|louro|folhas de louro|temperos?|gengibre em pó|noz-moscada|vinagre)/i;
 const CAT_RULES = [
   ['Mercearia', /caldo|natas de coco|leite de coco|leite de amêndoa|bebida/],
   ['Talho', /frango|peru|carne|vaca|bife|peito/],
@@ -263,10 +263,11 @@ const CAT_RULES = [
   ['Mercearia', /./],
 ];
 function catOf(name) { const n = name.toLowerCase(); for (const [c, re] of CAT_RULES) if (re.test(n)) return c; return 'Mercearia'; }
-const ADJ = /\b(picad[oa]s?|ralad[oa]s?|cozid[oa]s?|descascad[oa]s?|fatiad[oa]s?|cortad[oa]s?|esmagad[oa]s?|batid[oa]s?|triturad[oa]s?|madur[oa]s?|grandes?|pequen[oa]s?|médi[oa]s?|médio-grandes?|fresc[oa]s?|cr[uú]a?s?|sem pele|sem caroço|opcional|finamente|bem)\b/g;
+const ADJ = /\b(picad[oa]s?|ralad[oa]s?|cozid[oa]s?|descascad[oa]s?|fatiad[oa]s?|cortad[oa]s?|esmagad[oa]s?|batid[oa]s?|triturad[oa]s?|madur[oa]s?|grandes?|pequen[oa]s?|médi[oa]s?|médio-grandes?|fresc[oa]s?|cr[uú]a?s?|sem pele|sem caroço|opcional|finamente|bem|sem a\S{3,6}r(?:es)?|sem sabor|a gosto)\b/g;
 function normName(s) {
   let n = s.toLowerCase().split(/[,(*;]/)[0].replace(/^(de|do|da|dos|das|uns|umas)\s+/, '').replace(ADJ, '').replace(/\s+/g, ' ').trim().replace(/^((mão|mões|mãos)(-| )cheias?|fin[oa]s?|cheias?|generos[oa]s?|fios?|toques?)\s+(de\s+|para\s+servir\s*)?/, '').replace(/\s+para servir$/, '');
-  return n.split(' ').map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)).join(' ');
+  n = n.replace(/^scoops?\s+(de\s+)?/, '').replace(/\s+/g, ' ').trim();
+  return n.split(' ').map((w) => (w.length > 3 && w.endsWith('zes') ? w.slice(0, -2) : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w)).join(' ');
 }
 function pluralName(n, q) {
   if (q <= 1.01 || /^(espinafre|salsa|coentro|hortelã|rúcula|manjericão|alface|cebolinho|gengibre|sal|azeite|arroz|aveia)/.test(n)) return n;
@@ -274,6 +275,7 @@ function pluralName(n, q) {
   const parts = n.split(' '); parts[0] = parts[0].split('-').map(pl).join('-'); return parts.join(' ');
 }
 function dispName(s) { return normName(s); }
+function finalName(n) { return /^iogurte/.test(n) ? 'iogurte' : /^batata[s]?-doce/.test(n) ? 'batata-doce' : n; }
 const UNIT_LABEL = { g: 'g', kg: 'kg', ml: 'ml', l: 'l', chav: 'chávena(s)', csp: 'colher(es) de sopa', cch: 'colher(es) de chá', dente: 'dente(s)', fatia: 'fatia(s)', punhado: 'punhado(s)', lata: 'lata(s)', folha: 'folha(s)', ramo: 'ramo(s)', pitada: 'pitada(s)', '': '' };
 export function fmtQty(q, unit) {
   if (unit === 'g' && q >= 1000) { q /= 1000; unit = 'kg'; }
@@ -282,18 +284,41 @@ export function fmtQty(q, unit) {
   const r = q >= 10 ? Math.round(q) : Math.round(q * 10) / 10;
   return `${String(r).replace('.', ',')}${unit === 'g' || unit === 'kg' || unit === 'ml' || unit === 'l' ? ' ' : ' '}${UNIT_LABEL[unit] ?? unit}`.trim();
 }
+// normaliza unidades do mesmo ingrediente para somar (chávena, colher, punhado -> g ou ml)
+const GRAMS_PER_CUP = { arroz: 185, aveia: 90, 'floco de aveia': 90, 'farinha de aveia': 100, farinha: 120, amêndoa: 140, caju: 130, semente: 140, queijo: 100, 'grão-de-bico': 170, 'proteína em pó': 100 };
+const LIQUID = /^mel$|caldo|leite|bebida|água|iogurte|sumo|natas|vinagre|azeite|óleo|tahini|molho|passata|polpa|clara/;
+const GREENS = /^(espinafre|salsa|coentro|hortelã|rúcula|manjericão|alface|agrião)/;
+const TO_ML = { chav: 240, csp: 15, cch: 5, l: 1000, ml: 1 };
+function canon(name, q, unit) {
+  if (name === 'noz' && unit === '') return { qty: q * 5, unit: 'g' };
+  if (/proteína em pó/.test(name) && unit === '') return { qty: q * 30, unit: 'g' };
+  if (name === 'batata-doce' && unit === 'g') return { qty: q / 250, unit: '' };
+  if (LIQUID.test(name) && unit === 'g') return { qty: q, unit: 'ml' };
+  if (unit === '' && GREENS.test(name)) return { qty: q, unit: 'punhado' };
+  if (name === 'batata-doce' && unit === 'fatia') return { qty: q / 10, unit: '' };
+  if (unit === 'punhado' && !GREENS.test(name)) return { qty: q * 30, unit: 'g' };
+  if (unit in TO_ML) {
+    const ml = q * TO_ML[unit];
+    if (LIQUID.test(name)) return { qty: ml, unit: 'ml' };
+    if (unit === 'chav' || unit === 'csp' || unit === 'cch') { const k = Object.keys(GRAMS_PER_CUP).find((x) => name.includes(x)); if (k) return { qty: (ml / 240) * GRAMS_PER_CUP[k], unit: 'g' }; return { qty: q, unit }; }
+    return { qty: ml, unit: 'ml' };
+  }
+  if (unit === 'kg') return { qty: q * 1000, unit: 'g' };
+  return { qty: q, unit };
+}
 export function shoppingList(plan, recipes, have = {}) {
   const items = {}; const hidden = []; const staples = {}; const notes = {};
   const bad = (n) => !n || n.length < 2 || /^[^a-zà-ú]/i.test(n);
   for (const b of batchesOf(plan, recipes)) {
     for (const ing of b.r.ing || []) {
-      const key0 = normName(ing.name || ing.raw);
+      const key0 = finalName(normName(ing.name || ing.raw));
       if (bad(key0)) continue;
       if (STAPLES.test(key0) || STAPLES.test((ing.raw || '').toLowerCase())) { staples[key0] = (staples[key0] || new Set()).add(b.r.title); continue; }
       if (ing.qty == null) { notes[key0] = (notes[key0] || new Set()).add(b.r.title); continue; }
-      const al = key0 === 'alho'; const key = key0 + '|' + (al ? 'dente' : ing.unit);
-      const it = (items[key] ||= { key, name: key0, disp: dispName(ing.name || ing.raw), unit: al ? 'dente' : ing.unit, qty: 0, cat: catOf(key0), from: new Set() });
-      it.qty += ing.qty * b.mult; it.from.add(b.r.title);
+      const cv = canon(key0, ing.qty * b.mult, ing.unit);
+      const al = key0 === 'alho'; const key = key0 + '|' + (al ? 'dente' : cv.unit);
+      const it = (items[key] ||= { key, name: key0, disp: finalName(dispName(ing.name || ing.raw)), unit: al ? 'dente' : cv.unit, qty: 0, cat: catOf(key0), from: new Set() });
+      it.qty += cv.qty; it.from.add(b.r.title);
     }
   }
   const byCat = {};
