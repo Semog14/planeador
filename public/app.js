@@ -22,7 +22,8 @@ function plural(label, n) { if (Math.abs(n - 1) < 0.01) return label; if (label.
 function doseLabel(r, d) {
   const lab = r.unitLabel || 'porção';
   if (COUNTABLE.has(lab) && Math.abs(d - Math.round(d)) < 0.01) return `${fmt(d)} ${plural(lab, d)}`;
-  return `${fmt(d, 2)} ${plural(lab, d)}`;
+  if (d <= 1) return `${C.doseTxt(d)} ${lab}`;
+  return `${C.doseTxt(d)} ${plural(lab, d)}`;
 }
 function people() { const s = S.get(); return [...s.profiles.map((p) => ({ id: p.id, name: p.name })), { id: 'child', name: s.child.name || 'Criança' }]; }
 function target(pid) { const s = S.get(); if (pid === 'child') return { kcal: s.child.kcal, protein: Math.round(s.child.kcal * 0.15 / 4), fat: Math.round(s.child.kcal * 0.33 / 9), carbs: Math.round(s.child.kcal * 0.52 / 4) }; return C.calcProfile(s.profiles.find((p) => p.id === pid)); }

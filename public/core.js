@@ -192,26 +192,31 @@ export function finalizePlan(plan, state, recipes) {
     // doses por pessoa, com ajuste final para acertar o total do dia
     for (const pe of people) {
       const items = SLOTS.map((slot, i) => { const m = day.meals[slot]; const r = recipeById(recipes, m.rid); return { slot, i, m, r }; }).filter((x) => x.r && x.r.per);
-      let doses = items.map((x) => clampDose(slotKcal(pe.kcal, pe.split, x.i) / Math.max(1, x.r.per.kcal), pe.child, x.r));
-      // 2 passagens de correção nas refeições principais
-      for (let pass = 0; pass < 2; pass++) {
-        const tot = items.reduce((s, x, j) => s + doses[j] * x.r.per.kcal, 0);
+      const raw = items.map((x, j) => clampDose(slotKcal(pe.kcal, pe.split, x.i) / Math.max(1, x.r.per.kcal), pe.child, x.r));
+      let doses = raw.map((d, j) => stepDose(d, pe.child, items[j].r));
+      // ajuste em passos de ¼ de porção para o total do dia ficar perto do objetivo
+      for (let it = 0; it < 12; it++) {
+        const tot = items.reduce((sum, x, j) => sum + doses[j] * x.r.per.kcal, 0);
         const gap = pe.kcal - tot;
-        if (Math.abs(gap) < pe.kcal * 0.02) break;
-        const mains = items.map((x, j) => ({ x, j })).filter((o) => o.x.slot === 'lu' || o.x.slot === 'di');
-        const mk = mains.reduce((s, o) => s + doses[o.j] * o.x.r.per.kcal, 0) || 1;
-        for (const o of mains) doses[o.j] = clampDose(doses[o.j] * (1 + gap / mk), pe.child, o.x.r);
+        let best = null;
+        items.forEach((x, j) => {
+          const dir = gap > 0 ? 1 : -1; const nd = Math.round((doses[j] + dir * 0.25) * 100) / 100;
+          const [lo, hi] = doseBounds(pe.child);
+          if (nd < lo || nd > hi) return;
+          const ng = gap - dir * 0.25 * x.r.per.kcal;
+          if (Math.abs(ng) < Math.abs(gap) - 1 && (!best || Math.abs(ng) < best.err)) best = { j, nd, err: Math.abs(ng) };
+        });
+        if (!best) break;
+        doses[best.j] = best.nd;
       }
       items.forEach((x, j) => { x.m.doses[pe.id] = doses[j]; });
     }
   }
   return plan;
 }
-function clampDose(d, child, r) {
-  const lo = child ? 0.2 : 0.4; const hi = child ? 1.5 : 3;
-  d = Math.max(lo, Math.min(hi, d));
-  return Math.round(d * 20) / 20;
-}
+function doseBounds(child) { return child ? [0.25, 1.5] : [0.5, 3]; }
+function clampDose(d, child) { const [lo, hi] = doseBounds(child); return Math.max(lo, Math.min(hi, d)); }
+function stepDose(d, child) { const [lo, hi] = doseBounds(child); return Math.max(lo, Math.min(hi, Math.round(d * 4) / 4)); }
 export function mealNutrition(r, dose) {
   if (!r?.per) return { kcal: 0, p: 0, f: 0, c: 0 };
   return { kcal: Math.round(r.per.kcal * dose), p: Math.round(r.per.p * dose), f: Math.round(r.per.f * dose), c: Math.round(r.per.c * dose) };
@@ -317,7 +322,7 @@ export function lastFridgeDay(plan, recipes, date) {
 
 // ---------- email da sexta ----------
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-export const doseTxt = (d) => { const f = { 0.25: '¼', 0.5: '½', 0.75: '¾' }; const w = Math.floor(d + 1e-9); const fr = Math.round((d - w) * 100) / 100; if (f[fr] !== undefined && (fr > 0)) return (w ? w + ' ' : '') + f[fr]; return String(Math.round(d * 100) / 100).replace('.', ','); };
+export const doseTxt = (d) => { d = Math.round(d * 4) / 4; const f = { 0.25: '¼', 0.5: '½', 0.75: '¾' }; const w = Math.floor(d + 1e-9); const fr = Math.round((d - w) * 100) / 100; if (f[fr] !== undefined && (fr > 0)) return (w ? w + ' ' : '') + f[fr]; return String(Math.round(d * 100) / 100).replace('.', ','); };
 export function weeklyEmailHTML(state, recipes, plan, appUrl = '') {
   const profs = state.profiles; const rs = recipes;
   const batches = batchesOf(plan, rs); const shop = shoppingList(plan, rs); const alerts = childAlerts(plan, rs);
