@@ -32,6 +32,18 @@ function doseLabel(r, d) {
   if (d <= 1) return `${C.doseTxt(d)} ${lab}`;
   return `${C.doseTxt(d)} ${plural(lab, d)}`;
 }
+function batchFor(plan, rid) { return plan ? C.batchesOf(plan, RS).find((x) => x.rid === rid) : null; }
+function gramsFor(plan, r, dose) { const b = batchFor(plan, r.id); return C.doseGrams(r, dose, b, plan && S.get().prepWeights?.[plan.week + ':' + r.id]); }
+function ingLine(i, f) {
+  if (i.qty == null) return `<li><span class="mut">${esc(i.raw)}</span></li>`;
+  const w = C.ingGrams({ ...i, qty: i.qty * f }); const nm = esc(i.name);
+  const count = i.unit === '' && !/^(mão|mãos|punhado)/i.test(i.name);
+  if (w && w.g >= 1 && !count && ['g', 'kg', 'ml', 'l', 'chav', 'csp', 'cch', 'punhado'].includes(i.unit)) {
+    const liquid = ['ml', 'l'].includes(i.unit); const orig = ['chav', 'csp', 'cch', 'punhado'].includes(i.unit) ? ` <span class="mut small">(${esc(C.fmtQty(i.qty * f, i.unit))})</span>` : '';
+    return `<li><span><b>${C.round5(w.g)} ${liquid ? 'ml' : 'g'}</b> ${nm}${orig}</span></li>`;
+  }
+  return `<li><span><b>${esc(C.fmtQty(i.qty * f, i.unit))}</b> ${nm}${w && w.g >= 1 && count ? ` <span class="mut small">(≈ ${C.round5(w.g)} g)</span>` : ''}</span></li>`;
+}
 function people() { const s = S.get(); return [...s.profiles.map((p) => ({ id: p.id, name: p.name })), { id: 'child', name: s.child.name || 'Criança' }]; }
 function target(pid) { const s = S.get(); if (pid === 'child') return { kcal: s.child.kcal, protein: Math.round(s.child.kcal * 0.15 / 4), fat: Math.round(s.child.kcal * 0.33 / 9), carbs: Math.round(s.child.kcal * 0.52 / 4) }; return C.calcProfile(s.profiles.find((p) => p.id === pid)); }
 function planFor(date) { const s = S.get(); for (const p of Object.values(s.plans)) if (p.days.some((d) => d.date === date)) return p; return null; }
@@ -70,9 +82,12 @@ function childBadge(r) {
 }
 function mealCard(date, slot, m, r, pid, o = {}) {
   const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose);
+  const gr = gramsFor(planFor(date), r, dose); const cnt = COUNTABLE.has(r.unitLabel || '');
+  const main = cnt ? doseLabel(r, dose) : gr ? `${gr.exact ? '' : '≈ '}${C.round5(gr.g)} g` : doseLabel(r, dose);
+  const sub = cnt ? (gr ? `≈ ${C.round5(gr.g)} g` : '') : gr ? doseLabel(r, dose) : '';
   return `<article class="meal ${o.now ? 'now' : ''} ${o.done ? 'is-done' : ''}"><button class="thumb" data-act="recipe" data-id="${r.id}" aria-label="Ver receita">${photo(r)}</button>
   <div class="mbody"><div class="eyebrow">${SLOT_NAMES[slot]}</div><h4 class="mt" data-act="recipe" data-id="${r.id}" style="margin:2px 0 4px">${esc(r.title)}</h4>
-  <div class="dose"><b>${esc(doseLabel(r, dose))}</b> · ${n.kcal} kcal</div><div class="mac"><span>P <b>${n.p}g</b></span><span>G <b>${n.f}g</b></span><span>H <b>${n.c}g</b></span></div>
+  <div class="dose"><b>${esc(main)}</b>${sub ? ` <span class="mut">(${esc(sub)})</span>` : ''} · ${n.kcal} kcal</div><div class="mac"><span>P <b>${n.p}g</b></span><span>G <b>${n.f}g</b></span><span>H <b>${n.c}g</b></span></div>
   <div class="tags">${modeBadge(m, r)}${childBadge(r)}</div>
   <div class="acts"><a href="#" class="chipbtn" data-act="meal" data-d="${date}" data-slot="${slot}">Quantidades</a>${o.swap ? `<button class="chipbtn" style="border:0" data-act="swap" data-d="${date}" data-slot="${slot}">Trocar</button>` : ''}</div></div>
   ${o.check ? `<label class="check"><input type="checkbox" data-act="done" data-slot="${slot}" ${o.done ? 'checked' : ''} aria-label="Marcar como comido"></label>` : ''}</article>`;
@@ -122,7 +137,7 @@ function viewSemana() {
   for (const b of batches) {
     const where = b.fresh ? '<span class="badge warn">cozinhar no próprio dia</span>' : `${b.fridgeCount ? `<span class="badge">${b.fridgeCount} no frigorífico</span>` : ''}${b.freezeCount ? `<span class="badge ice">${b.freezeCount} no congelador</span>` : ''}`;
     const k = `prep:${week}:${b.rid}`;
-    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l" style="flex:1"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br><span class="mut">${b.meals.length} refeições para os 3 = <b>${doseTxt2(b.need)}</b> ${plural(b.r.unitLabel || 'porção', 2)} (${people().map((p) => esc(p.name) + ' ' + doseTxt2(b.byP?.[p.id === 'child' ? 'child' : p.id] || 0)).join(' · ')})<br>Fazer <b>${fmt(b.mult, 1)}×</b> a receita (cada uma rende ${fmt(b.r.units || 1, 1)}) → ${fmt(b.mult * (b.r.units || 1), 1)}${b.mult * (b.r.units || 1) - b.need > 0.01 ? ', sobra ' + doseTxt2(b.mult * (b.r.units || 1) - b.need) : ''}</span><br>${where}<br><input type="number" inputmode="numeric" placeholder="peso do tacho pronto (g)" value="${s.prepWeights?.[week + ':' + b.rid] || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:230px;margin-top:8px">${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
+    h += `<li class="${s.checked?.[k] ? 'done' : ''}"><input type="checkbox" data-act="chk" data-k="${k}" ${s.checked?.[k] ? 'checked' : ''}><span class="l" style="flex:1"><b data-act="recipe" data-id="${b.rid}" style="cursor:pointer">${esc(b.r.title)}</b><br><span class="mut">${b.meals.length} refeições para os 3 = <b>${doseTxt2(b.need)}</b> ${plural(b.r.unitLabel || 'porção', 2)} (${people().map((p) => esc(p.name) + ' ' + doseTxt2(b.byP?.[p.id === 'child' ? 'child' : p.id] || 0)).join(' · ')})<br>Fazer <b>${fmt(b.mult, 1)}×</b> a receita (cada uma rende ${fmt(b.r.units || 1, 1)}) → ${fmt(b.mult * (b.r.units || 1), 1)}${b.mult * (b.r.units || 1) - b.need > 0.01 ? ', sobra ' + doseTxt2(b.mult * (b.r.units || 1) - b.need) : ''}</span><br>${where}${(() => { const pw = s.prepWeights?.[week + ':' + b.rid]; const est = C.recipeWeight(b.r); const tot = b.mult * (b.r.units || 1); const gp = people().map((p) => { const d = (b.byP?.[p.id] || 0) / b.meals.length; const g = C.doseGrams(b.r, d, b, pw); return g ? `${esc(p.name)} ${C.round5(g.g)} g` : null; }).filter(Boolean); return `<br><span class="small"><b>Por refeição:</b> ${gp.length ? gp.join(' · ') : 'pesa o tacho para saberes'}${pw ? '' : gp.length ? ' (estimado)' : ''}</span><br><input type="number" inputmode="numeric" placeholder="${est.ok ? '≈ ' + C.round5(est.perUnit * tot) + ' g (estimado) · escreve o real' : 'peso do tacho pronto (g)'}" value="${pw || ''}" data-act="pw" data-k="${week}:${b.rid}" style="max-width:300px;margin-top:8px">`; })()}${b.r.bookNote ? `<br><span class="mut small">${esc(b.r.bookNote)}</span>` : ''}</span></li>`;
   }
   return h + `</ul></div>`;
 }
@@ -262,13 +277,14 @@ function mealModal(date, slot) {
   const day = plan.days.find((d) => d.date === date); const m = day.meals[slot]; const r = rec(m.rid); const pid = ui.who;
   const dose = m.doses?.[pid] || 0; const n = C.mealNutrition(r, dose); const f = dose / (r.units || 1);
   const who = people().find((p) => p.id === pid).name;
-  const b = C.batchesOf(plan, RS).find((x) => x.rid === r.id); const pw = s.prepWeights?.[plan.week + ':' + r.id];
-  const grams = pw && b ? Math.round((pw / (b.mult * (r.units || 1))) * dose) : null;
-  const list = (r.ing || []).map((i) => (i.qty != null ? `<li><span><b>${esc(C.fmtQty(i.qty * f, i.unit))}</b> ${esc(i.name)}</span></li>` : `<li><span class="mut">${esc(i.raw)}</span></li>`)).join('');
+  const gr = gramsFor(plan, r, dose);
+  const list = (r.ing || []).map((i) => ingLine(i, f)).join('');
+  const others = people().filter((p) => p.id !== pid).map((p) => { const d = m.doses?.[p.id] || 0; const g = gramsFor(plan, r, d); return `${esc(p.name)} ${g ? (g.exact ? '' : '≈ ') + C.round5(g.g) + ' g' : esc(doseLabel(r, d))}`; }).join(' · ');
+  const gbox = gr ? `<div class="alert ice"><b>Prato pronto para ${esc(who)}: ${gr.exact ? '' : '≈ '}${C.round5(gr.g)} g</b>${gr.exact ? 'Calculado a partir do peso do tacho que registaste no dia de prep.' : 'Estimativa a partir dos ingredientes. Para ficar exato, pesa o tacho pronto e escreve o peso em Semana > Dia de prep.'}<br><span class="small">Os outros: ${others}</span></div>` : `<div class="alert ice"><b>Quanto servir do prato pronto?</b>Pesa o tacho todo depois de cozinhar e escreve o peso em Semana > Dia de prep. A app diz-te os gramas para cada pessoa.</div>`;
   openModal(`<div class="hero">${photo(r)}</div><h2>${esc(r.title)}</h2><p class="mut">${esc(SLOT_NAMES[slot])} de ${esc(who)}: <b>${esc(doseLabel(r, dose))}</b> · ${n.kcal} kcal · P ${n.p}g · G ${n.f}g · H ${n.c}g</p>
-  ${grams ? `<div class="alert ice"><b>Do prato pronto: cerca de ${grams} g</b>Calculado a partir do peso do tacho que registaste no dia de prep.</div>` : `<div class="alert ice"><b>Quanto servir do prato pronto?</b>Depois de cozinhar, pesa o tacho todo e escreve o peso em Semana > Dia de prep. A app diz-te os gramas para cada pessoa.</div>`}
-  <h3>Ingredientes desta dose (em cru)</h3><div class="card"><ul class="clean">${list}</ul></div>
-  <p class="mut small">Estas quantidades são a receita inteira dividida pelas porções e multiplicada pela tua dose. Temperos sem quantidade ficam a gosto.</p>
+  ${gbox}
+  <h3>Ingredientes em cru, por ingrediente (${esc(who)})</h3><div class="card"><ul class="clean">${list}</ul></div>
+  <p class="mut small">Útil quando não fazes tudo no mesmo tacho: pesa cada ingrediente para a tua dose. Medidas caseiras convertidas em gramas são aproximadas. Temperos sem quantidade ficam a gosto.</p>
   <div class="row"><button class="btn sec" data-act="recipe" data-id="${r.id}">Ver receita completa</button></div>`);
 }
 function openModal(html) { $('#mbody').innerHTML = html; $('#modal').hidden = false; $('.sheet').scrollTop = 0; }
@@ -326,7 +342,7 @@ document.addEventListener('input', (e) => {
   if (e.target.id === 'swq') { const v = e.target.value.toLowerCase(); document.querySelectorAll('#swlist .card').forEach((c) => (c.style.display = c.dataset.t.includes(v) ? '' : 'none')); }
 });
 document.addEventListener('change', (e) => {
-  if (e.target.dataset?.act === 'pw') { const v = Math.round(num(e.target.value, 0)); S.update((x) => { (x.prepWeights ||= {})[e.target.dataset.k] = v || null; }); toast('Peso guardado'); return; }
+  if (e.target.dataset?.act === 'pw') { const v = Math.round(num(e.target.value, 0)); S.update((x) => { (x.prepWeights ||= {})[e.target.dataset.k] = v || null; }); toast('Peso guardado'); render(); return; }
   if (e.target.id === 'imgfile') { const f = e.target.files[0]; if (!f) return; const pr = $('#imgprog'); pr.textContent = 'A ler…'; f.text().then(async (t) => { try { const m = JSON.parse(t); if (!m || typeof m !== 'object' || !Object.keys(m).some((k) => /^b\d{3}$/.test(k))) throw new Error('Ficheiro inesperado'); IMG = m; await S.saveImgs(m, (p) => (pr.textContent = `A guardar na conta… ${p}%`)); pr.textContent = 'Fotos guardadas.'; toast('Fotos importadas'); render(); } catch (err) { pr.textContent = 'Erro: ' + err.message; } }); return; }
   if (e.target.id === 'imp') { const f = e.target.files[0]; if (!f) return; f.text().then((t) => { try { S.replaceAll(JSON.parse(t)); toast('Cópia importada'); render(); } catch { toast('Ficheiro inválido'); } }); }
 });

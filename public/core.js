@@ -306,6 +306,45 @@ function canon(name, q, unit) {
   if (unit === 'kg') return { qty: q * 1000, unit: 'g' };
   return { qty: q, unit };
 }
+
+// ---------- pesos (gramas) ----------
+const UNIT_W = [[/ovo/, 55], [/tâmara/, 20], [/abacate/, 150], [/banana/, 110], [/cenour/, 80], [/batata-doce/, 250], [/batata/, 200], [/cebola/, 120], [/tomate/, 120], [/curgete/, 250], [/maçã|maça/, 150], [/pimento/, 150], [/alho-francês/, 150], [/wrap/, 55], [/noz/, 5], [/salmão|bacalhau|pescada|filete|posta/, 150], [/peito de frango|frango/, 180], [/pepino/, 200], [/beterraba/, 120], [/couve/, 300], [/limão|laranja/, 100], [/tosta/, 60]];
+const COOK_GAIN = [[/^arroz(?! de| em)|arroz (agulha|basmati|integral)/, 1.8], [/massa|macarr|fusilli|esparguete|noodle/, 1.2], [/quinoa|cuscuz|trigo/, 1.6]];
+export function ingGrams(ing) {
+  if (!ing || ing.qty == null) return null;
+  const name = finalName(normName(ing.name || ing.raw || ''));
+  if (/^(água|agua)/.test(name)) return null;
+  const c = canon(name, ing.qty, ing.unit);
+  let g = null;
+  if (c.unit === 'g' || c.unit === 'ml') g = c.qty;
+  else if (c.unit === 'punhado') g = c.qty * 30;
+  else if (c.unit === 'chav') g = c.qty * 150;
+  else if (c.unit === 'csp') g = c.qty * 12;
+  else if (c.unit === 'cch') g = c.qty * 4;
+  else if (c.unit === 'dente') g = c.qty * 4;
+  else if (c.unit === 'fatia') g = c.qty * 15;
+  else if (c.unit === 'pitada' || c.unit === 'folha' || c.unit === 'ramo') g = 0;
+  else if (c.unit === '') { const w = UNIT_W.find(([re]) => re.test(name)); g = w ? c.qty * w[1] : null; }
+  if (g == null) return null;
+  const gain = COOK_GAIN.find(([re]) => re.test(name));
+  return { g, cooked: g * (gain ? 1 + gain[1] : 1), name };
+}
+// peso estimado de uma receita (cru e depois de cozinhada) e por porção
+export function recipeWeight(r) {
+  let raw = 0, cooked = 0, n = 0;
+  for (const i of r.ing || []) { const w = ingGrams(i); if (w) { raw += w.g; cooked += w.cooked; n++; } }
+  const u = r.units || 1;
+  const perUnit = cooked / u; const dens = r.per && perUnit ? r.per.kcal / perUnit : 0;
+  return { raw, cooked, perUnit, ok: n >= 2 && cooked > 0 && dens >= 0.7 && dens <= 4.5 && !/sopa|caldo|batido|smoothie/i.test(r.title) };
+}
+// gramas do prato pronto para uma dose: usa o peso do tacho se existir, senão estima
+export function doseGrams(r, dose, batch, potWeight) {
+  const u = r.units || 1;
+  if (potWeight && batch) return { g: Math.round((potWeight / (batch.mult * u)) * dose), exact: true };
+  const w = recipeWeight(r); if (!w.ok) return null;
+  return { g: Math.round(w.perUnit * dose), exact: false };
+}
+export const round5 = (g) => (g >= 100 ? Math.round(g / 10) * 10 : Math.round(g / 5) * 5);
 export function shoppingList(plan, recipes, have = {}) {
   const items = {}; const hidden = []; const staples = {}; const notes = {};
   const bad = (n) => !n || n.length < 2 || /^[^a-zà-ú]/i.test(n);
@@ -383,9 +422,10 @@ export function weeklyEmailHTML(state, recipes, plan, appUrl = '') {
     h += `<h3 style="margin:14px 0 4px">${fmtLong(day.date)}</h3><table style="border-collapse:collapse;width:100%;font-size:13px">`;
     for (const slot of SLOTS) {
       const m = day.meals[slot]; const r = recipeById(rs, m.rid); if (!r) continue;
-      const doses = profs.map((p) => `${esc(p.name)} ${doseTxt(m.doses[p.id] || 0)}`).join(' · ') + ` · ${esc(state.child.name)} ${doseTxt(m.doses.child || 0)}`;
+      const rw = recipeWeight(r); const gtxt = (d) => (rw.ok ? ` ≈${round5(rw.perUnit * d)} g` : ` ${doseTxt(d)} porç.`);
+      const doses = profs.map((p) => `${esc(p.name)}${gtxt(m.doses[p.id] || 0)}`).join(' · ') + ` · ${esc(state.child.name)}${gtxt(m.doses.child || 0)}`;
       const tag = m.mode === 'freezer' ? ' ❄ descongelar na véspera' : m.mode === 'fresh' ? ' 🍳 fazer na hora' : '';
-      h += `<tr><td style="padding:3px 6px;border-bottom:1px solid #eee;width:120px">${SLOT_NAMES[slot]}</td><td style="padding:3px 6px;border-bottom:1px solid #eee"><b>${esc(r.title)}</b>${tag}<br><span style="color:#666">${doses} (porções)</span></td></tr>`;
+      h += `<tr><td style="padding:3px 6px;border-bottom:1px solid #eee;width:120px">${SLOT_NAMES[slot]}</td><td style="padding:3px 6px;border-bottom:1px solid #eee"><b>${esc(r.title)}</b>${tag}<br><span style="color:#666">${doses}</span></td></tr>`;
     }
     h += `</table>`;
   }
