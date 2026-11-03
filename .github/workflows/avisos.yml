@@ -1,0 +1,36 @@
+name: Avisos (email de sexta e notificações)
+on:
+  schedule:
+    - cron: '7 * * * *'      # de hora a hora; o script decide se há algo a enviar
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Forçar envio agora: mail ou push (deixa vazio para o normal)'
+        required: false
+        default: ''
+permissions:
+  actions: write
+  contents: read
+jobs:
+  avisos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --omit=dev --no-audit --no-fund
+      - run: node server/run.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          FAMILY_ID: ${{ secrets.FAMILY_ID }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          VAPID_PUBLIC: ${{ secrets.VAPID_PUBLIC }}
+          VAPID_PRIVATE: ${{ secrets.VAPID_PRIVATE }}
+          APP_URL: ${{ secrets.APP_URL }}
+          FORCE: ${{ github.event.inputs.force }}
+      # o GitHub desativa agendamentos em repositórios parados há 60 dias: isto volta a ativá-lo
+      - run: gh workflow enable avisos.yml
+        env: { GH_TOKEN: '${{ github.token }}' }
+        continue-on-error: true

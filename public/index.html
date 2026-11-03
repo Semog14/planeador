@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Planeador de Refeições</title>
+<meta name="theme-color" content="#1f6f4a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top"><div class="brand">Planeador</div><nav id="who" aria-label="Pessoa"></nav><span id="sync" class="sync" title="Estado da sincronização"></span></header>
+<main id="view" tabindex="-1"></main>
+<nav id="tabs" aria-label="Secções">
+  <button data-tab="hoje"><i>🏠</i><span>Hoje</span></button>
+  <button data-tab="semana"><i>📅</i><span>Semana</span></button>
+  <button data-tab="compras"><i>🛒</i><span>Compras</span></button>
+  <button data-tab="receitas"><i>📖</i><span>Receitas</span></button>
+  <button data-tab="perfil"><i>⚙️</i><span>Perfil</span></button>
+</nav>
+<div id="modal" hidden><div class="sheet" role="dialog" aria-modal="true"><button class="close" id="mclose" aria-label="Fechar">✕</button><div id="mbody"></div></div></div>
+<div id="toast" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
